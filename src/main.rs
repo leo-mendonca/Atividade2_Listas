@@ -3,7 +3,12 @@ use std::fmt::Display;
 
 struct CelulaSimples<T> {
     conteudo: T,
-    apontador: *mut CelulaSimples<T>,
+    proximo: *mut CelulaSimples<T>,
+}
+struct CelulaDupla<T> {
+    conteudo: T,
+    proximo: *mut CelulaDupla<T>,
+    anterior: *mut CelulaDupla<T>,
 }
 
 struct ListaEncadeada<T> {
@@ -12,6 +17,219 @@ struct ListaEncadeada<T> {
     ponta: *mut CelulaSimples<T>,
     // tamanho_unidade: usize,
 }
+
+struct ListaDupla<T> {
+    n: u32,
+    cabeca: *mut CelulaDupla<T>,
+    ponta: *mut CelulaDupla<T>,
+}
+impl<T> ListaDupla<T> {
+    fn novo() ->Self {
+
+        let layout:Layout = Layout::new::<CelulaDupla<T>>();
+
+        let cabeca: *mut CelulaDupla<T> = unsafe {alloc(layout)} as *mut CelulaDupla<T>;
+        ListaDupla {
+            n: 0,
+            cabeca: cabeca,
+            ponta: cabeca.clone(),
+        }
+    }
+    fn colocar(self: &mut Self,elemento: T) {
+        let nova_celula: CelulaDupla<T> = CelulaDupla {
+            conteudo: elemento,
+            proximo: self.cabeca.clone(),
+            anterior: self.ponta.clone(),
+        };
+        if self.n==0 {
+            unsafe {self.cabeca.write(nova_celula)};
+        }
+        else {
+            let layout:Layout = Layout::new::<CelulaDupla<T>>();
+            let ponteiro: *mut CelulaDupla<T>  = unsafe {alloc(layout) as *mut CelulaDupla<T>};
+            let mut penultima_celula = unsafe { self.ponta.read() };
+            penultima_celula.proximo = ponteiro;
+            unsafe { self.ponta.write(penultima_celula) };
+            unsafe { ponteiro.write(nova_celula) };
+            self.ponta = ponteiro;
+        }
+        self.n += 1;
+    }
+    fn inserir_apos(self:&mut Self, endereco: *mut CelulaDupla<T>, conteudo: T) {
+        //Insere o caractere 'conteudo' na celula imediatamente apos a celula que esta em 'endereco'
+        //Identificando a celula atual (que sera a anterior à nova):
+        let mut celula_anterior:CelulaDupla<T> = unsafe {endereco.read()};
+        let end_seguinte: *mut CelulaDupla<T> = celula_anterior.proximo;
+        let mut celula_seguinte: CelulaDupla<T> = unsafe { end_seguinte.read()};
+        let celula_nova: CelulaDupla<T> = CelulaDupla {
+            conteudo: conteudo,
+            proximo: end_seguinte.clone(),
+            anterior: endereco.clone(),
+        };
+        let layout:Layout = Layout::new::<CelulaDupla<T>>();
+        unsafe { //modificando os apontadores da celula anterior e da seguinte para apontar para a celula inserida
+            let apontador_novo:*mut CelulaDupla<T> =alloc(layout) as *mut CelulaDupla<T>;
+            apontador_novo.write(celula_nova);
+            celula_anterior.proximo = apontador_novo;
+            celula_seguinte.anterior = apontador_novo;
+            endereco.write(celula_anterior);
+            end_seguinte.write(celula_seguinte);
+        };
+        if endereco==self.ponta {self.ponta = end_seguinte}
+        self.n+=1;
+    }
+    fn inserir_antes(self: &mut Self,endereco: *mut CelulaDupla<T>, conteudo: T) {
+        match endereco==self.cabeca {
+            true => {self.inserir_cabeca(conteudo)},
+            false => {
+                let celula: CelulaDupla<T> = unsafe {endereco.read()};
+                self.inserir_apos(celula.anterior, conteudo);
+            }
+        }
+    }
+    fn inserir_cabeca(self: &mut Self, conteudo: T) {
+        let cabeca_atual: *mut CelulaDupla<T> = self.cabeca.clone();
+        let mut celula_atual = unsafe {cabeca_atual.read()};
+        let layout: Layout = Layout::new::<CelulaDupla<T>>();
+        let nova_cabeca: *mut CelulaDupla<T> = unsafe {alloc(layout) as *mut CelulaDupla<T>};
+        let nova_celula: CelulaDupla<T> = CelulaDupla {
+            conteudo: conteudo,
+            anterior: nova_cabeca,
+            proximo: cabeca_atual,
+        };
+        celula_atual.anterior=nova_cabeca;
+        unsafe {
+            cabeca_atual.write(celula_atual);
+            nova_cabeca.write(nova_celula);
+        }
+        self.cabeca=nova_cabeca;
+        self.n+=1;
+    }
+    fn proximo(self:&mut Self, endereco: *mut CelulaDupla<T>) -> (T,*mut CelulaDupla<T>) {
+        if endereco==self.ponta {
+            panic!()
+        }
+        unsafe {
+            let celula_atual: CelulaDupla<T> =  {endereco.read()};
+            let end_prox:*mut CelulaDupla<T> = celula_atual.proximo;
+            let proxima_celula: CelulaDupla<T> =  {end_prox.read()};
+            (proxima_celula.conteudo, (end_prox))
+        }
+    }
+    fn proximo2(self:&Self, endereco: *const CelulaDupla<T>) -> (T,*const CelulaDupla<T>) {
+        if endereco==self.ponta {
+            panic!()
+        }
+        unsafe {
+            let celula_atual: CelulaDupla<T> =  {endereco.read()};
+            let end_prox:*const CelulaDupla<T> = celula_atual.proximo;
+            let proxima_celula: CelulaDupla<T> =  {end_prox.read()};
+            (proxima_celula.conteudo, (end_prox))
+        }
+    }
+    fn ler_cabeca(self: &Self) ->(T,*const CelulaDupla<T>) {
+        let celula: CelulaDupla<T> = unsafe {self.cabeca.read()};
+        let conteudo: T = celula.conteudo;
+        let apontador: *const CelulaDupla<T> = celula.proximo;
+        (conteudo, apontador)
+    }
+    fn alterar(self: &Self, endereco: *mut CelulaDupla<T>, conteudo: T) {
+        let mut celula = unsafe {endereco.read()};
+        celula.conteudo=conteudo;
+        unsafe {endereco.write(celula)};
+    }
+    fn deletar_apos(self: &mut Self, endereco: *mut CelulaDupla<T>) {
+        assert!(endereco!=self.ponta);
+        //Deleta a celula seguinte àquela do endereço fornecido
+        let mut celula_anterior: CelulaDupla<T> = unsafe {endereco.read()};
+        let ponteiro_remover:*mut CelulaDupla<T> = celula_anterior.proximo;
+        let celula_a_remover: CelulaDupla<T> = unsafe {ponteiro_remover.read()};
+        //Alterando o apontador da célula anterior para "pular" a célula deletada
+        celula_anterior.proximo = celula_a_remover.proximo.clone();
+        
+        unsafe { endereco.write(celula_anterior) };
+        self.n-=1;
+        
+        //Se a célula removida for a ponta da lista, a célula anterior vira a nova ponta:
+        if ponteiro_remover==self.ponta {self.ponta = endereco}
+        else  {
+            let mut celula_seguinte: CelulaDupla<T> = unsafe { celula_a_remover.proximo.read() };
+            celula_seguinte.anterior=endereco.clone();
+            unsafe {celula_a_remover.proximo.write(celula_seguinte)};
+        }
+        //Desalocando a memoria:
+        let layout_remover: Layout = Layout::new::<CelulaDupla<T>>();
+        unsafe { dealloc(ponteiro_remover as *mut u8, layout_remover) };
+    }
+    fn deletar(self: &mut Self, endereco: *mut CelulaDupla<T>) {
+        //deleta a célula no endereço dado
+        match endereco==self.cabeca {
+            true=> self.deletar_cabeca(),
+            false => {
+                let celula = unsafe {endereco.read()};
+                self.deletar_apos(celula.anterior)
+            },
+        }
+    }
+    fn deletar_cabeca(self: &mut Self) {
+        assert!(self.n>0);
+        let cabeca_atual=self.cabeca;
+        let celula_cabeca = unsafe {cabeca_atual.read()};
+        self.cabeca = celula_cabeca.proximo.clone();
+        let layout_remover: Layout = Layout::new::<CelulaDupla<T>>();
+        unsafe { dealloc(cabeca_atual as *mut u8, layout_remover) };
+        self.n-=1;
+    }
+
+    fn anterior(self:&mut Self, endereco: *mut CelulaDupla<T>) -> (T,*mut CelulaDupla<T>) {
+        if endereco==self.cabeca {panic!()}
+        let celula_atual: CelulaDupla<T> = unsafe {endereco.read()};
+        let celula_anterior: CelulaDupla<T> = unsafe{celula_atual.anterior.read()};
+        (celula_anterior.conteudo, celula_atual.anterior)
+    }
+}
+
+struct IteradorListaDupla<'a, T> {
+    lista: &'a ListaDupla<T>,
+    endereco_atual: *const CelulaDupla<T>,
+    contagem: u32,
+}
+impl<'b,T> Iterator for crate::IteradorListaDupla<'b, T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.contagem==self.lista.n {None}
+        else if self.contagem==0 {
+            let (conteudo, _proximo_endereco) : (T, *const CelulaDupla<T>) = self.lista.ler_cabeca();
+            self.contagem+=1;
+            Some(conteudo)
+        }
+        else {
+            let (conteudo, proximo_endereco): (T, *const CelulaDupla<T>) = self.lista.proximo2(self.endereco_atual);
+            self.endereco_atual=proximo_endereco;
+            self.contagem+=1;
+            Some(conteudo)
+        }
+    }
+}
+
+impl<'a,T> IntoIterator for &'a ListaDupla<T> where T:'a {
+    //Implementando um iterador para poder usar loops do tipo for com a lista encadeada
+    type Item = T;
+
+    type IntoIter = crate::IteradorListaDupla<'a, T>
+    where T:'a;
+
+    fn into_iter(self) -> Self::IntoIter {
+        crate::IteradorListaDupla {
+            lista: &self,
+            endereco_atual: self.cabeca.clone(),
+            contagem: 0,
+        }
+    }
+}
+
+
 
 impl<T> ListaEncadeada<T> {
     fn novo() ->Self {
@@ -28,15 +246,8 @@ impl<T> ListaEncadeada<T> {
     fn colocar(self: &mut Self,elemento: T) {
         let nova_celula: CelulaSimples<T> = CelulaSimples {
             conteudo: elemento,
-            apontador: self.cabeca,
+            proximo: self.cabeca,
         };
-        /*if self.n==0 {
-            unsafe {self.cabeca.write(nova_celula)};
-            self.n+=1;
-
-            return
-        }*/
-
         if self.n==0 {
             unsafe {self.cabeca.write(nova_celula)};
             self.n+=1;
@@ -45,13 +256,12 @@ impl<T> ListaEncadeada<T> {
             let layout:Layout = Layout::new::<CelulaSimples<T>>();
             let ponteiro: *mut CelulaSimples<T>  = unsafe {alloc(layout) as *mut CelulaSimples<T>};
             let mut penultima_celula = unsafe { self.ponta.read() };
-            penultima_celula.apontador = ponteiro;
+            penultima_celula.proximo = ponteiro;
             unsafe { self.ponta.write(penultima_celula) };
             unsafe { ponteiro.write(nova_celula) };
             self.ponta = ponteiro;
             self.n += 1;
         }
-
     }
     fn inserir_apos(self:&mut Self, endereco: *mut CelulaSimples<T>, conteudo: T) {
         //Insere o caractere 'conteudo' na celula imediatamente apos a celula que esta em 'endereco'
@@ -59,16 +269,15 @@ impl<T> ListaEncadeada<T> {
         let mut celula_anterior:CelulaSimples<T> = unsafe {endereco.read()};
         let celula_nova: CelulaSimples<T> = CelulaSimples {
             conteudo: conteudo,
-            apontador: celula_anterior.apontador,
+            proximo: celula_anterior.proximo,
         };
         let layout:Layout = Layout::new::<CelulaSimples<T>>();
         unsafe { //modificando o apontador da celula anterior para apontar para a celula inserida
             let apontador_novo:*mut CelulaSimples<T> =alloc(layout) as *mut CelulaSimples<T>;
             apontador_novo.write(celula_nova);
-            celula_anterior.apontador = apontador_novo;
+            celula_anterior.proximo = apontador_novo;
             endereco.write(celula_anterior)
         };
-
     }
     fn proximo(self:&mut Self, endereco: *mut CelulaSimples<T>) -> (T,*mut CelulaSimples<T>) {
         if endereco==self.ponta {
@@ -76,7 +285,7 @@ impl<T> ListaEncadeada<T> {
         }
         unsafe {
             let celula_atual: CelulaSimples<T> =  {endereco.read()};
-            let end_prox:*mut CelulaSimples<T> = celula_atual.apontador;
+            let end_prox:*mut CelulaSimples<T> = celula_atual.proximo;
             let proxima_celula: CelulaSimples<T> =  {end_prox.read()};
              (proxima_celula.conteudo, (end_prox))
         }
@@ -87,7 +296,7 @@ impl<T> ListaEncadeada<T> {
         }
         unsafe {
             let celula_atual: CelulaSimples<T> =  {endereco.read()};
-            let end_prox:*const CelulaSimples<T> = celula_atual.apontador;
+            let end_prox:*const CelulaSimples<T> = celula_atual.proximo;
             let proxima_celula: CelulaSimples<T> =  {end_prox.read()};
             (proxima_celula.conteudo, (end_prox))
         }
@@ -95,9 +304,8 @@ impl<T> ListaEncadeada<T> {
     fn ler_cabeca(self: &Self) ->(T,*const CelulaSimples<T>) {
         let celula: CelulaSimples<T> = unsafe {self.cabeca.read()};
         let conteudo: T = celula.conteudo;
-        let apontador: *const CelulaSimples<T> = celula.apontador;
+        let apontador: *const CelulaSimples<T> = celula.proximo;
         (conteudo, apontador)
-
     }
     fn alterar(self: &Self, endereco: *mut CelulaSimples<T>, conteudo: T) {
         let mut celula = unsafe {endereco.read()};
@@ -108,10 +316,10 @@ impl<T> ListaEncadeada<T> {
         assert!(endereco!=self.ponta);
         //Deleta a celula seguinte àquela do endereço fornecido
         let mut celula_anterior: CelulaSimples<T> = unsafe {endereco.read()};
-        let ponteiro_remover:*mut CelulaSimples<T> = celula_anterior.apontador;
+        let ponteiro_remover:*mut CelulaSimples<T> = celula_anterior.proximo;
         let celula_a_remover: CelulaSimples<T> = unsafe {ponteiro_remover.read()};
         //Alterando o apontador da célula anterior para "pular" a célula deletada
-        celula_anterior.apontador = celula_a_remover.apontador.clone();
+        celula_anterior.proximo = celula_a_remover.proximo.clone();
         unsafe { endereco.write(celula_anterior) };
         self.n-=1;
         //Se a célula removida for a ponta da lista, a célula anterior vira a nova ponta:
@@ -124,7 +332,7 @@ impl<T> ListaEncadeada<T> {
         assert!(self.n>0);
         let cabeca_atual=self.cabeca;
         let celula_cabeca = unsafe {cabeca_atual.read()};
-        self.cabeca = celula_cabeca.apontador.clone();
+        self.cabeca = celula_cabeca.proximo.clone();
         let layout_remover: Layout = Layout::new::<CelulaSimples<T>>();
         unsafe { dealloc(cabeca_atual as *mut u8, layout_remover) };
         self.n-=1;
@@ -140,6 +348,15 @@ impl<T:Display> ListaEncadeada<T> {
         print!("\n");
     }
 }
+impl<T:Display> ListaDupla<T> {
+    fn imprimir_lista(self: &Self) {
+        for s in self.into_iter() {
+            print!("{}",s);
+        }
+        print!("\n");
+    }
+}
+
 //todo()implementar lista dupla
 struct IteradorLista<'a, T> {
     lista: &'a ListaEncadeada<T>,
@@ -153,7 +370,6 @@ impl<'b,T> Iterator for IteradorLista<'b,T> {
         if self.contagem==self.lista.n {None}
         else if self.contagem==0 {
             let (conteudo, _proximo_endereco) : (T, *const CelulaSimples<T>) = self.lista.ler_cabeca();
-            // self.endereco_atual=proximo_endereco;
             self.contagem+=1;
             Some(conteudo)
         }
@@ -203,7 +419,7 @@ fn teste_bom_dia() {
         print!("{}",conteudo);
         if conteudo=='m' { pos_inserir =endereco }
     }
-    endereco=lista.cabeca;
+    // endereco=lista.cabeca;
     lista.inserir_apos(pos_inserir, 's');
     println!("\nTerminei de inserir");
     lista.imprimir_lista();
@@ -231,7 +447,25 @@ fn teste_numerico() {
         println!("{}",elem);
     }
 }
+fn teste_lista_dupla(){
+    let mut lista: ListaDupla<char> = ListaDupla::novo();
+    let mensagem: &str ="Palavra";
+    for letra in mensagem.chars() {
+        lista.colocar(letra);
+        print!("{}",letra);
+    }
+    let mut endereco: *mut CelulaDupla<char> = lista.ponta;
+    let mut _conteudo: char;
+    println!("\nInserindo exclamações entre as letras");
+    for _i in 1..mensagem.len() {
+        lista.inserir_antes(endereco, '!');
+        (_conteudo, endereco) = lista.anterior(endereco);
+        (_conteudo, endereco) = lista.anterior(endereco);
+    }
+    lista.imprimir_lista();
+}
 fn main() {
     teste_bom_dia();
     teste_numerico();
+    teste_lista_dupla();
 }
