@@ -276,8 +276,9 @@ impl<T> ListaEncadeada<T> {
             let apontador_novo:*mut CelulaSimples<T> =alloc(layout) as *mut CelulaSimples<T>;
             apontador_novo.write(celula_nova);
             celula_anterior.proximo = apontador_novo;
-            endereco.write(celula_anterior)
+            endereco.write(celula_anterior);
         };
+        self.n+=1;
     }
     fn proximo(self:&mut Self, endereco: *mut CelulaSimples<T>) -> (T,*mut CelulaSimples<T>) {
         if endereco==self.ponta {
@@ -414,8 +415,9 @@ fn teste_bom_dia() {
     let mut pos_inserir: *mut CelulaSimples<char> = lista.cabeca;
     unsafe { conteudo = lista.cabeca.read().conteudo; }
     print!("{}",conteudo);
-    for _i in 1..8 {
-       ( conteudo, endereco) = lista.proximo(endereco);
+    for _i in 1..mensagem.len() {
+       let ( conteudo, end) = lista.proximo(endereco);
+        endereco=end;
         print!("{}",conteudo);
         if conteudo=='m' { pos_inserir =endereco }
     }
@@ -455,12 +457,12 @@ fn teste_lista_dupla(){
         print!("{}",letra);
     }
     let mut endereco: *mut CelulaDupla<char> = lista.ponta;
-    let mut _conteudo: char;
     println!("\nInserindo exclamações entre as letras");
     for _i in 1..mensagem.len() {
         lista.inserir_antes(endereco, '!');
-        (_conteudo, endereco) = lista.anterior(endereco);
-        (_conteudo, endereco) = lista.anterior(endereco);
+        let (_c, end) = lista.anterior(endereco);
+        let (_c, end) = lista.anterior(end);
+        endereco=end;
     }
     lista.imprimir_lista();
 }
